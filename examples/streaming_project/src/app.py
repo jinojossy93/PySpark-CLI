@@ -3,7 +3,7 @@ import sys
 from json import loads
 from os import path
 from pyspark.storagelevel import StorageLevel
-
+from mongoengine import Document, StringField, connect
 
 
 
@@ -13,12 +13,10 @@ if __name__ == "__main__":
     from sqlalchemy import create_engine, Column, Integer, String
     from sqlalchemy.ext.declarative import declarative_base
     from sqlalchemy.orm import sessionmaker
-    from mongoengine import Document, StringField, connect
 
 
     # The base class which our objects will be defined on.
     Base = declarative_base()
-    connect(db="mydb", alias='default', host='localhost:27017')
     class StreamData(Base):
         __tablename__ = 'StreamData'
 
@@ -63,12 +61,12 @@ if __name__ == "__main__":
         meta = {'allow_inheritance': True}
 
     def saveToMongoDB(data):
-        data = loads(data)
+        connect("mydb")
         user = data.get('user', {}).get('name', '--NA--')
         location = data.get('user', {}).get('location', '--NA--')
         tweet = Tweet(user=user, location=location)
         tweet.save()
-        return True
+        return data
 
     ssc = spark_config.ssc
     lines = ssc.socketTextStream(spark_config.IP, spark_config.Port)
@@ -89,7 +87,8 @@ if __name__ == "__main__":
     # data.pprint()
     # data = lines.map(lambda x: loads(x)).map(lambda result: saveToDB(result))
     # session = getSession()
-    lines.foreachRDD(lambda rdd: rdd.filter(saveToMongoDB).coalesce(1).saveAsTextFile("./tweets/%f" % time.time()))
+    d = lines.map(lambda x: loads(x)).map(lambda result: saveToMongoDB(result))
+    d.pprint()
     # session.close()
     # You must start the Spark StreamingContext, and await process termination…
     ssc.start()
